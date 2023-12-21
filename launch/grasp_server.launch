@@ -1,0 +1,6 @@
+<launch>
+  <arg name="TODO" default=""/>
+  <node name="graspnet_ros_docker" pkg="graspnet_ros" type="grasp_server.py" output="screen">
+    <param name="TODO" value="$(arg TODO)" />
+  </node>
+</launch>

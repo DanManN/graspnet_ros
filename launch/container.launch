@@ -1,0 +1,4 @@
+<launch>
+  <arg name="TODO" default=""/>
+  <node name="graspnet_ros_server" pkg="graspnet_ros" type="run_container.py" output="screen" args="-host $(optenv ROS_MASTER localhost)" />
+</launch>
