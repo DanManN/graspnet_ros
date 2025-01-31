@@ -36,21 +36,28 @@ SHELL ["/bin/bash", "-c"]
 # pip dependencies
 RUN pip3 install ninja
 RUN pip3 install torch --index-url https://download.pytorch.org/whl/cu113
-RUN pip3 install -U MinkowskiEngine --install-option="--blas=openblas" -v --no-deps
+ENV TORCH_CUDA_ARCH_LIST="3.5;5.0;6.0;6.1;7.0;7.5;8.0;8.6+PTX"
+#RUN git clone https://github.com/NVIDIA/MinkowskiEngine.git && cd MinkowskiEngine && \
+#	sudo python setup.py install --blas=openblas --force_cuda
+ENV CXX=c++
+ENV CUDA_HOME=/usr/local/cuda-11.4
+RUN pip3 install -U git+https://github.com/NVIDIA/MinkowskiEngine --install-option="--blas=openblas" --install-option="--force_cuda" -v --no-deps
 ENV SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True
 RUN pip install graspnetAPI #git+https://github.com/graspnet/graspnetAPI.git
 RUN pip3 install transformations
 
 # setup workspace
 RUN mkdir -p ~/graspnet_ws/src
-RUN cd ~/graspnet_ws && git clone https://github.com/graspnet/graspnet-baseline.git
+# RUN cd ~/graspnet_ws && git clone https://github.com/graspnet/graspnet-baseline.git
+RUN cd ~/graspnet_ws && git clone https://github.com/graspnet/graspness_unofficial.git graspnet-baseline
+
 
 # patch graspnet-baseline/dataset/graspnet_dataset.py
 RUN sed -i 's/from torch._six import container_abcs/import collections.abc as container_abcs/' \
 	~/graspnet_ws/graspnet-baseline/dataset/graspnet_dataset.py
 
 # install source dependencies
-RUN cd ~/graspnet_ws/graspnet-baseline && pip3 install $(tail -n+2 requirements.txt)
+RUN cd ~/graspnet_ws/graspnet-baseline && pip3 install $(tail -n+3 requirements.txt)
 # find arch number here: https://developer.nvidia.com/cuda-gpus
 RUN cd ~/graspnet_ws/graspnet-baseline/pointnet2 && TORCH_CUDA_ARCH_LIST="3.5;5.0;6.0;6.1;7.0;7.5;8.0;8.6+PTX" pip3 install .
 RUN cd ~/graspnet_ws/graspnet-baseline/knn && pip3 install .

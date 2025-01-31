@@ -55,8 +55,6 @@ RUN cd ~/graspnet_ws/graspnet-baseline && pip3 install $(tail -n+2 requirements.
 RUN cd ~/graspnet_ws/graspnet-baseline/pointnet2 && TORCH_CUDA_ARCH_LIST="3.5;5.0;6.0;6.1;7.0;7.5;8.0;8.6+PTX" pip3 install .
 RUN cd ~/graspnet_ws/graspnet-baseline/knn && pip3 install .
 
-RUN pip uninstall -y numpy && pip install numpy
-
 # Installing catkin package
 COPY --chown=user . /home/user/graspnet_ws/src/graspnet_ros
 RUN source /opt/ros/noetic/setup.bash && \

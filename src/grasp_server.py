@@ -11,6 +11,7 @@ ROOT_DIR = os.path.abspath('/home/user/graspnet_ws/graspnet-baseline')
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
 sys.path.append(os.path.join(ROOT_DIR, 'dataset'))
 sys.path.append(os.path.join(ROOT_DIR, 'utils'))
+sys.path.append(os.path.join(ROOT_DIR, 'pointnet2'))
 from graspnet import GraspNet, pred_decode
 from graspnet_dataset import GraspNetDataset
 from collision_detector import ModelFreeCollisionDetector
@@ -18,7 +19,7 @@ from data_utils import CameraInfo, create_point_cloud_from_depth_image
 
 import rospy
 import transformations as tf
-from geometry_msgs.msg import Pose, PoseStamped
+from geometry_msgs.msg import Point, Pose, PoseStamped
 from graspnet_ros.msg import Grasps
 from graspnet_ros.srv import GetGrasps, GetGraspsResponse
 
@@ -54,6 +55,7 @@ class GraspPlanner():
         checkpoint_path = rospy.get_param(
             '~checkpoint_path',
             '/home/user/graspnet_ws/src/graspnet_ros/checkpoint-rs.tar'
+            # '/home/user/graspnet_ws/src/graspnet_ros/minkuresunet_realsense.tar'
         )
         net = GraspNet(
             input_feature_dim=0,
@@ -86,10 +88,20 @@ class GraspPlanner():
         self,
         points,  # N x (x,y,z)
         colors,  # N x (r,g,b)
-        pre_grasp_dist=0.05,
-        num_samples=1000,
+        num_samples=20000,
         vizualize=True
     ):
+        # transform to trained coordinate frame
+        frame_rotate = np.array(
+            [
+                [0, -1., 0., 0.],
+                [-1, 0., 0., 0.],
+                [0., 0, -1., 0.],
+                [0., 0., 0., 1.],
+            ]
+        )
+        points = (frame_rotate[:3, :3] @ points.T).T
+
         # sample points
         if len(points) >= num_samples:
             idxs = np.random.choice(len(points), num_samples, replace=False)
@@ -125,15 +137,34 @@ class GraspPlanner():
             cloud.colors = o3d.utility.Vector3dVector(colors.astype(np.float32))
             gg.nms()
             gg.sort_by_score()
-            # gg = gg[:50]
+            gg = gg[:100]
+            # gg0 = gg[:len(gg) // 2]
+            # grippers = gg0.to_open3d_geometry_list()
+            # o3d.visualization.draw_geometries([cloud, *grippers])
+            # gg1 = gg[len(gg) // 2:]
+            # grippers = gg1.to_open3d_geometry_list()
+            # o3d.visualization.draw_geometries([cloud, *grippers])
             grippers = gg.to_open3d_geometry_list()
-            o3d.visualization.draw_geometries([cloud, *grippers])
+            geometries = [cloud, *grippers]
+            viewer = o3d.visualization.Visualizer()
+            viewer.create_window()
+            for geometry in geometries:
+                viewer.add_geometry(geometry)
+            opt = viewer.get_render_option()
+            opt.show_coordinate_frame = True
+            opt.background_color = np.asarray([0.5, 0.5, 0.5])
+            viewer.run()
+            viewer.destroy_window()
 
         pose_list = []
+        score_list = []
         for grasp in gg:
             pose = np.eye(4)
             pose[:3, :3] = grasp.rotation_matrix
             pose[:3, 3] = grasp.translation
+
+            # transform back to input frame
+            pose = frame_rotate.T @ pose
 
             #flip x and z axis
             pose = np.matmul(
@@ -146,22 +177,18 @@ class GraspPlanner():
                 ],
             )
 
-            # displace position by pre_grasp_dist
-            approach = pose[:3, 2] / np.linalg.norm(pose[:3, 2])
-            # displace = self.hand_height - pre_grasp_dist
-            #bottom = grasp.get_grasp_bottom() + displace * approach
-            pose[:3, 3] -= pre_grasp_dist * approach
-
             pose_list.append(matrix_to_pose(pose))
-        return pose_list
+            score_list.append(grasp.score)
+        return pose_list, score_list
 
     def handle_grasp_request(self, req):
         points = np.array([(p.x, p.y, p.z) for p in req.points])
         colors = np.array([(c.r, c.g, c.b) for c in req.colors])
-        grasps = self.get_grasp_poses(points, colors)
+        grasps, scores = self.get_grasp_poses(points, colors)
         grasps_msg = Grasps()
         grasps_msg.poses = grasps
-        #float64[] scores
+        grasps_msg.scores = scores
+        grasps_msg.samples = [Point(0, 0, 0) for p in grasps]  # TODO: implement
 
         return GetGraspsResponse(grasps_msg)
 
